@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view
 
 from shakarim_admission_bot.gemini_config import client
+from .models import ChatHistory
 
 import os
 from django.conf import settings
@@ -47,7 +48,24 @@ def smart_ask_gemini(request):
     """
 
     try:
-        prompt = f"{system_instruction}\n\nВопрос: {question}"
+        # Получаем ID сессии (можно как query параметр передавать: ?question=...&session_id=123)
+        session_id = request.GET.get("session_id", "anonymous")
+
+        # Загружаем последние 5 сообщений
+        history = ChatHistory.objects.filter(session_id=session_id).order_by("-timestamp")[:5]
+        history = reversed(history)  # чтобы были в хрон. порядке
+
+        # Формируем контекст из истории
+        context = ""
+        for msg in history:
+            if msg.role == "user":
+                context += f"Пользователь: {msg.message}\n"
+            else:
+                context += f"Бот: {msg.message}\n"
+
+        # Формируем промпт
+        prompt = f"{system_instruction}\n\n{context}Пользователь: {question}\nБот:"
+
         response = client.models.generate_content(
             model="gemini-2.0-flash-lite",
             contents=[prompt],
@@ -57,6 +75,9 @@ def smart_ask_gemini(request):
                 system_instruction=system_instruction
             )
         )
+        ChatHistory.objects.create(session_id=session_id, role="user", message=question)
+        ChatHistory.objects.create(session_id=session_id, role="model", message=response.text)
+        
         return Response({"answer": response.text})
 
     except Exception as e:

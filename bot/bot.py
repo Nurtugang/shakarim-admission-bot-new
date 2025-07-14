@@ -56,9 +56,10 @@ def handle_message(update: Update, context: CallbackContext) -> None:
     )
     
     try:
+        session_id = str(update.effective_chat.id)  # используем Telegram chat ID
         response = requests.get(
             f"{API_BASE_URL}/smart_ask_gemini/",
-            params={"question": user_question}
+            params={"question": user_question, "session_id": session_id}
         )
         
         if response.status_code == 200:

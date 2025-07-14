@@ -16,3 +16,12 @@ class KnowledgeBase(models.Model):
     def __str__(self):
         return f"{self.category}: {self.text[:50]}..."
     
+
+class ChatHistory(models.Model):
+    session_id = models.CharField(max_length=255)
+    role = models.CharField(max_length=10, choices=[('user', 'User'), ('model', 'Model')])
+    message = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.session_id} ({self.role}): {self.message[:50]}"
