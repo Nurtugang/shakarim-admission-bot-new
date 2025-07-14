@@ -1,67 +1,63 @@
-from rest_framework import status
+from google import genai
+from google.genai import types
+
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 
-from api.bot_api import smart_ask_gemini
-from .serializers import KnowledgeBaseSerializer
-from shakarim_admission_bot.firebase_config import firebase_db
-from shakarim_admission_bot.gemini_config import ask_gemini
+from shakarim_admission_bot.gemini_config import client
 
-# получение всех данных из базы знаний (firebase)
-@api_view(["GET"])
-def get_knowledge(request):
-    category = request.GET.get("category", None)
+import os
+from django.conf import settings
 
-    if category:
-        docs = firebase_db.collection("knowledge-base").where("category", "==", category).stream()
-    else:
-        docs = firebase_db.collection("knowledge-base").stream()
+def get_relevant_knowledge_from_file():
+    """ Читает файл, формированный с помощью signals.py """
+    path = os.path.join(settings.BASE_DIR, "cache", "knowledge_cache.txt")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return ""
 
-    data = [{"id": doc.id, **doc.to_dict()} for doc in docs]
-
-    return Response(data, status=status.HTTP_200_OK)
-
-
-# добавление данных в базу знаний (firebase)
-@api_view(["POST"])
-def add_knowledge(request):
-    serializer = KnowledgeBaseSerializer(data=request.data)
-    if serializer.is_valid():
-        firebase_db.collection("knowledge-base").add(serializer.validated_data)
-        return Response({"message": "Знание добавлено!"}, status=status.HTTP_201_CREATED)
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# удаление данных из базы знаний (firebase)
-@api_view(["DELETE"])
-def delete_knowledge(request, doc_id):
-    doc_ref = firebase_db.collection("knowledge-base").document(doc_id)
-
-    if doc_ref.get().exists:
-        doc_ref.delete()
-        return Response({"message": "Знание удалено!"}, status=status.HTTP_204_NO_CONTENT)
-    else:
-        return Response({"error": "Документ не найден"}, status=status.HTTP_404_NOT_FOUND)
-
-# базовый запрос к Gemini AI
-@api_view(["GET"])
-def simple_ask_question(request):
-    question = request.GET.get("question", None)
-    
-    if not question:
-        return Response({"error": "Вопрос не задан."}, status=400)
-
-    answer = ask_gemini(question)
-    return Response({"answer": answer})
 
 # умный запрос к Gemini AI с использованием базы знаний
 @api_view(["GET"])
-def smart_ask_question(request):
+def smart_ask_gemini(request):
     question = request.GET.get("question", None)
-    
     if not question:
         return Response({"error": "Вопрос не задан."}, status=400)
 
-    answer = smart_ask_gemini(question)
-    return Response({"answer": answer})
+    knowledge = get_relevant_knowledge_from_file()
+
+    system_instruction = f"""
+        НИКОГДА не применяй никакое текстовое форматирование. Запрещено использовать жирный, курсив, подчёркивание, цвет, списки, заголовки или другие стили. Не используй Markdown и HTML. Все ссылки должны выводиться только как обычный текст (например: https://example.com). Не оборачивай их в скобки, не добавляй якоря или пояснительный текст. Просто голый URL. Всё должно быть выведено как чистый, плоский текст без каких-либо символов стилизации.
+        Ты - бот-помощник для поступающих в НАО "Шәкәрім университет". ПРИ УПОМИНАНИИ УНИВЕРСИТЕТА, ВСЕГДА ИСПОЛЬЗУЙ ЭТО НАЗВАНИЕ! Не "университет Шәкәрім" а  НАО "Шәкәрім Университет"
+        
+        Твоя задача - давать точные и полезные ответы на вопросы о поступлении.
+        Будь дружелюбным, информативным и кратким.
+        
+        Используй предоставленные знания для ответов на вопросы:
+        
+        {knowledge}
+        
+        Если в предоставленных знаниях нет ответа на вопрос, используй свои общие знания.
+        Но всегда отдавай приоритет информации из базы знаний.
+        
+        Отвечай на языке котором написал пользователь.
+        Не вставляй знания из базы напрямую в ответ. Используй их для составления осмысленного, сжатого и естественного ответа, как это сделал бы человек. Извлекай только релевантную информацию, переформулируй её, не копируй целиком блоки текста. Не пиши списки, заголовки и не перечисляй поля, если пользователь сам этого не запросил. Отвечай простыми, живыми фразами.
+    """
+
+    try:
+        prompt = f"{system_instruction}\n\nВопрос: {question}"
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-lite",
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                max_output_tokens=500,
+                temperature=0.2,
+                system_instruction=system_instruction
+            )
+        )
+        return Response({"answer": response.text})
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)

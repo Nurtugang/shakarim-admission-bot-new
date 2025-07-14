@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 from telegram import Update, ParseMode
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
-# load_dotenv()
-load_dotenv(dotenv_path="/var/www/shakarim-admission-bot/.env")
+load_dotenv()
+# load_dotenv(dotenv_path="/var/www/shakarim-admission-bot/.env")
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL")
