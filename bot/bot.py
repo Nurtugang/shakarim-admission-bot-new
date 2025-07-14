@@ -1,5 +1,4 @@
 import os
-import logging
 import requests
 from dotenv import load_dotenv
 from telegram import Update, ParseMode
@@ -10,12 +9,6 @@ load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL")
-
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
 
 # Обработчик команды /start
 def start(update: Update, context: CallbackContext) -> None:
@@ -70,7 +63,6 @@ def handle_message(update: Update, context: CallbackContext) -> None:
                 "Извините, произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте позже."
             )
     except Exception as e:
-        logger.error(f"Error: {e}")
         update.message.reply_text(
             "Извините, произошла ошибка. Пожалуйста, попробуйте позже."
         )
